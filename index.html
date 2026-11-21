@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ha">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLACK RACK UGAS - Trading Market</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.0/dist/ethers.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;color:#FFD700;font-family:Orbitron,monospace;padding:15px}
+.header{text-align:center;border:2px solid #FFD700;padding:20px;border-radius:15px;background:linear-gradient(135deg,#111,#222);margin-bottom:20px}
+.header h1{font-size:28px;text-shadow:0 0 10px #FFD700}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.stat{background:#111;border:1px solid #FFD700;padding:12px;border-radius:10px;text-align:center}
+.stat b{color:#0f0}
+.card{background:#111;border:1px solid #333;border-radius:12px;padding:15px;margin-bottom:15px}
+.card h3{color:#FFD700}
+.btn{width:100%;padding:12px;background:linear-gradient(90deg,#FFD700,#FFA500);color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;margin-top:8px}
+.btn:hover{opacity:0.8}
+.btn-green{background:linear-gradient(90deg,#00ff00,#00aa00);color:#000}
+input{width:100%;padding:10px;margin:5px 0;background:#000;color:#FFD700;border:1px solid #FFD700;border-radius:6px}
+#items{display:grid;gap:12px}
+.item-card{background:#1a1a1a;border:1px solid #FFD700;border-radius:10px;padding:12px}
+.sold{opacity:0.4;border-color:#555}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚫ BLACK RACK UGAS 🟡</h1>
+  <p>800M Supply | Siyan Komai Da UGAS | Base Sepolia</p>
+  <p id="wallet">Not Connected</p>
+  <button class="btn" onclick="connect()">CONNECT METAMASK</button>
+</div>
+
+<div class="stats">
+  <div class="stat">Balance<br><b id="bal">0 UGAS</b></div>
+  <div class="stat">Total Items<br><b id="tItems">0</b></div>
+</div>
+
+<div class="card">
+  <h3>📦 Saka Abin Siyarwa (Siyan Komai)</h3>
+  <input id="itemName" placeholder="Misali: Toyota Camry 2024, Gida Abuja, iPhone 15">
+  <input id="itemPrice" type="number" placeholder="Farashi a UGAS (misali 5000)">
+  <button class="btn btn-green" onclick="listItem()">LIST ITEM - SIYARWA</button>
+</div>
+
+<div class="card">
+  <h3>💸 Biya Kai Tsaye Da UGAS</h3>
+  <input id="payTo" placeholder="Address na mai karba 0x...">
+  <input id="payAmount" type="number" placeholder="Amount UGAS">
+  <input id="payReason" placeholder="Me kake siya? Misali: Motar haya">
+  <button class="btn" onclick="payDirect()">PAY - BIYA YANZU</button>
+</div>
+
+<div class="card">
+  <h3>🛒 Kasuwar UGAS - Duk Abin Da Ake Siyarwa</h3>
+  <button class="btn" onclick="loadItems()">REFRESH MARKET</button>
+  <div id="items" style="margin-top:15px"></div>
+</div>
+
+<script>
+const CONTRACT_ADDRESS = "0xYOUR_UGAS_ADDRESS_HERE"; // <-- SA ADDRESS DIN KA ANAN
+const ABI = [
+  "function balanceOf(address) view returns(uint256)",
+  "function totalItems() view returns(uint256)",
+  "function items(uint256) view returns(uint256 id,address seller,string name,uint256 price,bool sold,bool active)",
+  "function listItem(string,uint256)",
+  "function buyItem(uint256)",
+  "function pay(address,uint256,string)",
+  "function buyAnything(address,string,uint256)"
+];
+
+let provider, signer, contract, userAddress;
+
+async function connect(){
+  if(!window.ethereum) return alert("Install MetaMask");
+  provider = new ethers.BrowserProvider(window.ethereum);
+  await provider.send("eth_requestAccounts", []);
+  signer = await provider.getSigner();
+  userAddress = await signer.getAddress();
+  document.getElementById("wallet").innerText = "Connected: " + userAddress.slice(0,6)+"..."+userAddress.slice(-4);
+  
+  // Switch to Base Sepolia
+  try{
+    await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x14a34"}]});
+  }catch(e){
+    await window.ethereum.request({method:"wallet_addEthereumChain",params:[{chainId:"0x14a34",chainName:"Base Sepolia",rpcUrls:["https://sepolia.base.org"],nativeCurrency:{name:"ETH",symbol:"ETH",decimals:18},blockExplorerUrls:["https://sepolia.basescan.org"]}]});
+  }
+  
+  contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+  loadBalance();
+  loadItems();
+}
+
+async function loadBalance(){
+  if(!contract) return;
+  const bal = await contract.balanceOf(userAddress);
+  document.getElementById("bal").innerText = ethers.formatEther(bal) + " UGAS";
+  const t = await contract.totalItems();
+  document.getElementById("tItems").innerText = t.toString();
+}
+
+async function listItem(){
+  const name = document.getElementById("itemName").value;
+  const price = document.getElementById("itemPrice").value;
+  if(!name || !price) return alert("Cika komai");
+  const tx = await contract.listItem(name, ethers.parseEther(price));
+  alert("Listing... TX: "+tx.hash);
+  await tx.wait();
+  alert("An saka!");
+  loadItems();
+}
+
+async function payDirect(){
+  const to = document.getElementById("payTo").value;
+  const amt = document.getElementById("payAmount").value;
+  const reason = document.getElementById("payReason").value;
+  if(!to || !amt) return alert("Cika address da amount");
+  const tx = await contract.pay(to, ethers.parseEther(amt), reason || "payment");
+  alert("Paying... "+tx.hash);
+  await tx.wait();
+  alert("An biya! "+reason);
+  loadBalance();
+}
+
+async function loadItems(){
+  if(!contract) return alert("Connect wallet da farko");
+  const count = await contract.totalItems();
+  const div = document.getElementById("items");
+  div.innerHTML = "";
+  for(let i=Number(count); i>=1 && i>Number(count)-20; i--){
+    try{
+      const it = await contract.items(i);
+      if(it.name==="") continue;
+      const price = ethers.formatEther(it.price);
+      const el = document.createElement("div");
+      el.className = "item-card" + (it.sold ? " sold" : "");
+      el.innerHTML = `<b>#${it.id} ${it.name}</b><br>Price: ${price} UGAS<br>Seller: ${it.seller.slice(0,6)}...${it.seller.slice(-4)}<br>Sold: ${it.sold}<br>${!it.sold && it.seller.toLowerCase()!=userAddress.toLowerCase() ? `<button class="btn btn-green" onclick="buyNow(${it.id})">BUY - SIYA YANZU</button>` : ""}`;
+      div.appendChild(el);
+    }catch(e){}
+  }
+}
+
+async function buyNow(id){
+  if(!confirm("Kana so ka siya item #"+id+" da UGAS?")) return;
+  const tx = await contract.buyItem(id);
+  alert("Buying... "+tx.hash);
+  await tx.wait();
+  alert("An siya! 🎉");
+  loadBalance();
+  loadItems();
+}
+</script>
+
+</body>
+</html>
